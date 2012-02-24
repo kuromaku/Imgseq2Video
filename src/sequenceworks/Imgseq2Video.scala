@@ -270,6 +270,7 @@ object Imgseq2Video extends SimpleSwingApplication {
           //runCommands(cmds)
           infoArea.append("The looping procedure copied "+cmds+" files\n")
           loopDone = true
+          loopNow.enabled_=(false)
           dialWindow.close
         }
         else {
@@ -290,6 +291,7 @@ object Imgseq2Video extends SimpleSwingApplication {
           val f0 = selFiles.first
           createMovie(f0.getParent,f0.getName)
         }
+        loopNow.enabled_=(true)
       }
       case ButtonClicked(`normalizeSeq`) => {
         normalizeSequence(pfix)
@@ -343,24 +345,30 @@ object Imgseq2Video extends SimpleSwingApplication {
         chooser.fileSelectionMode_=(SelectionMode.DirectoriesOnly)
         //val filter = new FileFilter { def accept(file:File): Boolean = if (file.isDirectory) true else false; def getDescription : String = "myFilter" }
         //chooser.fileFilter_=(filter)
-        chooser.showOpenDialog(contents.head)
-        saveDirectory = chooser.selectedFile.toString()+"/"
-        saveLabel.text_=(saveDirectory)
+        val rval = chooser.showOpenDialog(contents.head)
+        if (rval.toString.equals("Approve")) {
+          saveDirectory = chooser.selectedFile.toString()+"/"
+          saveLabel.text_=(saveDirectory)
+        }
+        
       }
       case ButtonClicked(`tmpDir`) => {
         val chooser = new FileChooser
         chooser.fileSelectionMode_=(SelectionMode.DirectoriesOnly)
-        chooser.showOpenDialog(contents.head)
-        
-        tmpDirectory = chooser.selectedFile.toString()+"/"
-        tmpLabel.text_=(tmpDirectory)
+        val rval = chooser.showOpenDialog(contents.head)
+        if (rval.toString.equals("Approve")) {
+          tmpDirectory = chooser.selectedFile.toString()+"/"
+          tmpLabel.text_=(tmpDirectory)
+        }
       }
       case ButtonClicked(`movDir`) => {
         val chooser = new FileChooser
         chooser.fileSelectionMode_=(SelectionMode.DirectoriesOnly)
-        chooser.showOpenDialog(contents.head)
-        movieDirectory = chooser.selectedFile.toString+"/"
-        movieDirLabel.text_=(movieDirectory)
+        val rval = chooser.showOpenDialog(contents.head)
+        if (rval.toString.equals("Approve")) {
+          movieDirectory = chooser.selectedFile.toString+"/"
+          movieDirLabel.text_=(movieDirectory)
+        }
       }
       case ButtonClicked(`infoLauncher`) => {
         val infoWindow = new Dialog {
@@ -749,14 +757,12 @@ object Imgseq2Video extends SimpleSwingApplication {
     }
   }
   def writeConfig : Unit = {
-    val config = <SaveDir>{saveDirectory}</SaveDir>
-    val config2 = config ++: <VideoDir>{movieDirectory}</VideoDir>;
-    val config3 = config2 ++:  <TmpDir>{tmpDirectory}</TmpDir><FrameRate>{frameRate}</FrameRate>;
+    val config = <SaveDir>{saveDirectory}</SaveDir><VideoDir>{movieDirectory}</VideoDir><TmpDir>{tmpDirectory}</TmpDir><FrameRate>{frameRate}</FrameRate>;
       
     val fw = new FileWriter("videoBuilderConfig.xml")
     //val el = <VideoBuilderConfig>
     //scala.xml.XML.write(fw,el,"UTF-8",true,null)
-    val config4 = <videoBuilderConfig>{config3}</videoBuilderConfig>
+    val config4 = <videoBuilderConfig>{config}</videoBuilderConfig>
     scala.xml.XML.write(fw,config4.head,"UTF-8",true,null)
     config4.tail.foreach(e => scala.xml.XML.write(fw,e,"UTF-8",false,null))
     fw.close
@@ -843,6 +849,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       infoArea.append("Created a movie with the command: "+cmd+"\n")
       val runt = Runtime.getRuntime
       runt.exec(cmd)
+      
     }
     else if (!properlyIndexedSequences) {
       val cmd = "ffmpeg -f image2 -i "+tmpDirectory+"notproper_%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+"notproper.avi"
