@@ -1,2 +1,14 @@
-A GUI written in scala which can be used to create videos (needs ffmpeg) from image sequences.
+A GUI written in scala which can be used to create videos (needs ffmpeg) from image sequences
+(.jpg files)..
 The program currently only works properly on Linux since it uses certain system commands.
+
+The most basic usage scenario involves a sequence of images with names like image_0001.jpg,
+image_0002.jpg and so forth which the GUI will pass to ffmpeg in order to make the video
+(currently using pre-determined parameter values).
+However, it should also be able to process several such sequences at once if you open files
+using the button "OpenManySequences" and then for example choose a directory containing
+several indexed sequences. The program can create either several separate video files or
+concatenate the image sequences into one single video.
+
+You can also normalize an indexed sequence like image_0021.jpg,image_0022.jpg to a sequence
+like image_0001.jpg,image_0002.jpg using the button "normalizeSequence" and make loops.
