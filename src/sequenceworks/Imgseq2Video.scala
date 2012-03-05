@@ -34,8 +34,9 @@ object Imgseq2Video extends SimpleSwingApplication {
   var min1:Int = 0
   var max1:Int = 0
   var pfix = "x"
+  var prefixInUse = ""
   var loopDone = false
-  var bPoints = new LinkedList[Int]()
+  var bPoints = new LinkedList[Int]() //to be used to store indexes where the sequence _0001,_0002,... breaks
   var normalized = false
   var reversed = false
   var manyFiles = false
@@ -46,22 +47,31 @@ object Imgseq2Video extends SimpleSwingApplication {
   infoArea.border_=(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(155,155,155)),"Program messages:"))
   val regexpr = new Regex("\\w+\\_\\d{4}\\.\\w+")
   var properlyIndexedSequences = false
+  var pfixLength = 3
+  var determinedEnding = ".jpg"
   var frameRate = 25
   var givenName = "imageseries"
   readConfig("videoBuilderConfig.xml")
   def copyImage(src:String,tgt:String) : Boolean = {
-    val fin = new FileInputStream(src)
-    val fout = new FileOutputStream(tgt)
-    var bytes = new Array[Byte](512)
-    var bytesRead = fin.read(bytes)
-    while (bytesRead > 0) {
-      fout.write(bytes,0,bytesRead)
-      bytesRead = fin.read(bytes)
+    val f = new File(tgt)
+    if (f.exists) {
+      return false
     }
-    fin.close
-    fout.close
-    return true
+    else {
+      val fin = new FileInputStream(src)
+      val fout = new FileOutputStream(tgt)
+      var bytes = new Array[Byte](512)
+      var bytesRead = fin.read(bytes)
+      while (bytesRead > 0) {
+        fout.write(bytes,0,bytesRead)
+        bytesRead = fin.read(bytes)
+      }
+      fin.close
+      fout.close
+      return true
+    }
   }
+  /*Creates a potentially lossy copy of an image*/
   def copyImage2(src:String,tgt:String) : Boolean = {
     ImageIO.write(ImageIO.read(new File(src)),"jpg",new File(tgt))
   }
@@ -171,7 +181,7 @@ object Imgseq2Video extends SimpleSwingApplication {
         max1 = max
         bPoints = l
         if (selFiles.length > 1) {
-          properlyIndexedSequences = fileNameChecker(selFiles)
+          properlyIndexedSequences = fileNameChecker(selFiles,true)
           imagesLoaded = true
           if (!properlyIndexedSequences) {
             infoArea.append("The files don't appear to be properly indexed (like image_0001.jpg to image_0100.jpg)\n")
@@ -179,13 +189,15 @@ object Imgseq2Video extends SimpleSwingApplication {
           if (min1 > 1) {
             normalizeSeq.enabled_=(true)
             normalizeNow.enabled_=(true)
-            infoArea.append("Loaded "+selFiles.length+" images\nYou can now normalize the image indexes before creating a movie.")
+            infoArea.append("Loaded "+selFiles.length+" images.\n")
+            infoArea.append("You can now normalize the image indexes before creating a movie.\n")
           }
           else {
             loopNow.enabled_=(true)
             makeMovie.enabled_=(true)
             reverseSequence.enabled_=(true)
-            infoArea.append("Loaded "+selFiles.length+" images\n Please select a further action.")
+            infoArea.append("Loaded "+selFiles.length+" images.\n")
+            infoArea.append("Please select a further action.\n")
           }
           openFiles.enabled_=(false)
         }
@@ -219,7 +231,7 @@ object Imgseq2Video extends SimpleSwingApplication {
 
         }
         if (selFiles.length > 1) {
-          properlyIndexedSequences = fileNameChecker(selFiles)
+          properlyIndexedSequences = fileNameChecker(selFiles,true)
           if (!properlyIndexedSequences) {
             infoArea.append("The files don't appear to be properly indexed (like image_0001.jpg to image_0100.jpg)\n")
           }
@@ -282,7 +294,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       case ButtonClicked(`makeMovie`) => {
         if (loopDone || normalized) {
           val f0 = selFiles.first
-          createMovie(f0.getParent,pfix+f0.getName)
+          createMovie(f0.getParent,f0.getName)
         }
         else if (manyFiles) {
           processManyFiles(selFiles)
@@ -322,6 +334,9 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
       case ButtonClicked(`clearAll`) => {
         selFiles = new LinkedList[File]()
+        determinedEnding = ".jpg"
+        pfixLength = 4
+        properlyIndexedSequences = false
         loopDone = false
         normalizeSeq.enabled_=(false)
         loopNow.enabled_=(false)
@@ -395,14 +410,45 @@ object Imgseq2Video extends SimpleSwingApplication {
         f.getName.substring(f.getName.length-4).equals(".jpg") || f.getName.substring(f.getName.length-5).equals(".jpeg")))
     files
   }
-  def fileNameChecker(fs:Seq[File]) : Boolean = {
-    for (f <- fs) {
-      val fname = f.getName
-      if (regexpr.findFirstIn(fname) == None) {
-        return false
+  def fileNameChecker(fs:Seq[File],checkEndings:Boolean) : Boolean = {
+    if (checkEndings) {
+      val endings = getEndings(fs)
+    
+      if (endings.size > 1) {
+        infoArea.append("Trouble: it appears the images have varying endings:\n")
+        for (e <- endings) {
+    	    infoArea.append(e+" ")
+        }
+        infoArea.append("\n")
+        infoArea.append("""Maybe it's better to "Clear All" and load only images with the same ending."""+"\n")
+      }
+      else {
+        pfixLength = endings.head.length
+        determinedEnding = endings.head
+        infoArea.append("Ending length was set to: "+pfixLength+" since the ending appears to be "+determinedEnding+"\n")
       }
     }
-    return true
+    var dotpos = 4
+    var posChanges = 0
+    var fileNamesAreOk = true
+    for (f <- fs) {
+      val fname = f.getName
+      if (fname.charAt(fname.length-dotpos) != '.') {
+        if (fname.charAt(fname.length-dotpos+1) == '.') {
+          dotpos += 1
+          posChanges += 1
+        }
+        else if (fname.charAt(fname.length-dotpos-1) == '.') {
+          dotpos -= 1
+          posChanges += 1
+        }
+      }
+      if (regexpr.findFirstIn(fname) == None) {
+        fileNamesAreOk = false
+      }
+    }
+    //infoArea.append("Final ending length was: "+dotpos+" and there were "+posChanges+" changes.\n")
+    return fileNamesAreOk
   }
   def processAllFiles(fs:Seq[File]) : Unit = { //(Array[Int],Set[String])
     
@@ -418,15 +464,14 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
     }
   }
-  def processFiles2(fs:Seq[File]) : Boolean = fileNameChecker(fs)
-  
+  //def processFiles2(fs:Seq[File]) : Boolean = fileNameChecker(fs)
+  /*A procedure that goes over the files and return the minimum and maximum
+   * index numbers (like 5 and 50 if the file names are like image_0005,...,image_0050
+   * plus a list of indices where the sequence has discontinuities
+   */
   def processFiles(fs:Seq[File]) : ((Int,Int),LinkedList[Int]) = {
-    if (!fileNameChecker(fs)) {
-      properlyIndexedSequences = false
+    if (!properlyIndexedSequences) {//TODO: think logic again
       return ((0,fs.length),new LinkedList[Int]())
-    }
-    else {
-      properlyIndexedSequences = true
     }
     val numFiles = fs.length
     var indexes = new Array[Int](numFiles)
@@ -436,7 +481,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       val name = f.getName()
       val l = name.length
       textArea.append(name+"\n")
-      indexes(idx) = name.substring(l-8,l-4).toInt
+      indexes(idx) = name.substring(l-4-pfixLength,l-pfixLength).toInt
       idx += 1
     }
     indexes = indexes.sortWith((a,b) => a < b)
@@ -459,8 +504,7 @@ object Imgseq2Video extends SimpleSwingApplication {
     ((min,max),breakPoints)
   }
   def processManyFiles(fs:Seq[File]) : Unit = {
-    if (!fileNameChecker(fs)) {
-      properlyIndexedSequences = false
+    if (!properlyIndexedSequences) {
       //val cmds = new Array[String](fs.length)
       var idx = 0
       var filescopied = 0
@@ -476,7 +520,6 @@ object Imgseq2Video extends SimpleSwingApplication {
       //runCommands(cmds)
     }
     else {
-      properlyIndexedSequences = true
       val names = countSeparate(fs)
     //val minMax = new Array[(Int,Int)](names.length)
     //val idxs = new Array[LinkedList[Int]](names.length)
@@ -490,7 +533,7 @@ object Imgseq2Video extends SimpleSwingApplication {
         var found = false
         var idx = 0
         while (!found) {
-          if (names(idx).equals(name.substring(0,l-8))) {
+          if (names(idx).equals(name.substring(0,l-4-pfixLength))) {
             found = true
           }
           else {
@@ -510,14 +553,14 @@ object Imgseq2Video extends SimpleSwingApplication {
         }
         else {
           normalizeSequence2(nameSeqs(i),"normalized",a._1)
-          createMovie(movieDirectory,"normalized"+nameSeqs(i).head.getName)
+          createMovie(movieDirectory,nameSeqs(i).head.getName)
         }
       }
     }
 
     //(minMax,idxs)
   }
-    def createSingleMovie(fs:Seq[File]) : Unit = {
+  def createSingleMovie(fs:Seq[File]) : Unit = {
     val names = countSeparate(fs)
     val nameSeqs = new Array[LinkedList[File]](names.length)
     for (i <- 0 until names.length) {
@@ -529,7 +572,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       var found = false
       var idx = 0
       while (!found) {
-        if (names(idx).equals(name.substring(0,l-8))) {
+        if (names(idx).equals(name.substring(0,l-4-pfixLength))) {
           found = true
         }
         else {
@@ -556,23 +599,24 @@ object Imgseq2Video extends SimpleSwingApplication {
           //val aname = f.getName
           //val idx2 = aname.substring(l-8,l-4).toInt
           if (idx < 10) {
-        	  copyImage(nA(k2),rname+"_000"+idx+".jpg")
+        	  copyImage(nA(k2),rname+"_000"+idx+determinedEnding)//copyImage(nA(k2),rname+"_000"+idx+".jpg")
           }
           else if (idx < 100) {
-            copyImage(nA(k2),rname+"_00"+idx+".jpg")
+            copyImage(nA(k2),rname+"_00"+idx+determinedEnding)
           }
           else if (idx < 1000){
-            copyImage(nA(k2),rname+"_0"+idx+".jpg")
+            copyImage(nA(k2),rname+"_0"+idx+determinedEnding)
           }
           else {
-            copyImage(nA(k2),rname+"_"+idx+".jpg")
+            copyImage(nA(k2),rname+"_"+idx+determinedEnding)
           }
           idx += 1
         }
       }
     }
     val runt = Runtime.getRuntime
-    val cmd = "ffmpeg -f image2 -i "+rname+"_%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+singleMovieName+".avi"
+    val cmd = "ffmpeg -f image2 -i "+rname+"_%04d"+determinedEnding+" -r "+frameRate+" -sameq "+movieDirectory+singleMovieName+".avi"
+    infoArea.append("Creating a single movie with the command: "+cmd+"\n")
     runt.exec(cmd)
   }
   def createSingleMovie2(fs:Seq[File]) : Unit = {
@@ -587,7 +631,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       var found = false
       var idx = 0
       while (!found) {
-        if (names(idx).equals(name.substring(0,l-8))) {
+        if (names(idx).equals(name.substring(0,l-4-pfixLength))) {
           found = true
         }
         else {
@@ -604,23 +648,24 @@ object Imgseq2Video extends SimpleSwingApplication {
         for (f <- nameSeqs(i)) {
           val aname = f.getName
           if (idx < 10) {
-        	  copyImage(f.getParent+"/"+aname,rname+"_000"+idx+".jpg")
+        	  copyImage(f.getParent+"/"+aname,rname+"_000"+idx+determinedEnding)//+jpg
           }
           else if (idx < 100) {
-            copyImage(f.getParent+"/"+aname,rname+"_00"+idx+".jpg")
+            copyImage(f.getParent+"/"+aname,rname+"_00"+idx+determinedEnding)
           }
           else if (idx < 1000){
-            copyImage(f.getParent+"/"+aname,rname+"_0"+idx+".jpg")
+            copyImage(f.getParent+"/"+aname,rname+"_0"+idx+determinedEnding)
           }
           else {
-            copyImage(f.getParent+"/"+aname,rname+"_"+idx+".jpg")
+            copyImage(f.getParent+"/"+aname,rname+"_"+idx+determinedEnding)
           }
           idx += 1
         }
       }
     }
     val runt = Runtime.getRuntime
-    val cmd = "ffmpeg -f image2 -i "+rname+"_%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+singleMovieName+".avi"
+    val cmd = "ffmpeg -f image2 -i "+rname+"_%04d"+determinedEnding+" -r "+frameRate+" -sameq "+movieDirectory+singleMovieName+".avi"
+    infoArea.append("Creating a single movie with the command: "+cmd+"\n")
     runt.exec(cmd)
   }
   def countSeparate(fs:Seq[File]) : Array[String] = {
@@ -642,7 +687,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       val num = name.substring(l-8,l-4).toInt
       val dName = f.getParent
       if (num != max1) {
-        if (copyImage(dName+"/"+name,tmpDirectory+prefix+renamedFile(name.substring(0,l-8),(max1-num),max1))) {
+        if (copyImage(dName+"/"+name,tmpDirectory+prefix+renamedFile(name.substring(0,l-4-pfixLength),(max1-num),max1))) {
           idx += 1
         }
         if (copyImage(dName+"/"+name,tmpDirectory+prefix+name)) {
@@ -657,6 +702,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
       
     }
+    prefixInUse = prefix
     idx
   }
   def createLoop2(fs:Seq[File],prefix:String,loops:Int) : Int = {
@@ -678,7 +724,7 @@ object Imgseq2Video extends SimpleSwingApplication {
     }
     var idx = l
     var up = false
-    val name = fA(0).getName.substring(0,fA(0).getName.length-8)
+    val name = fA(0).getName.substring(0,fA(0).getName.length-4-pfixLength)
     for (j <- 2 until (loops+1)) {
       if (!up) {
         for (k <- 1 until l) {
@@ -694,8 +740,34 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
       up = !up
     }
+    prefixInUse = prefix
     copied
   }
+  def isJpg(s:String) : Int = {
+    val l = s.length
+    val k = s.toLowerCase()
+    if (k.substring(l-5,l).equals(".jpg")) return 1
+    else if (k.substring(l-6,l).equals(".jpeg")) return 2
+    else return 0
+  }
+  def getEndings(seq:Seq[File]) : Set[String] = {
+    var endings = Set[String]()
+    for (f <- seq) {
+      val s = f.getName()
+      val l = s.length
+      var idx = l - 1
+      var found = false
+      while (idx >= 0 && !found) {
+        if (s.charAt(idx) == '.') {
+          found = true
+          endings = endings.+(s.substring(idx,l))
+        }
+        idx -= 1
+      }
+    }
+    return endings
+  }
+  
   def normalizeSequence(preFix:String) : Unit = {
     if (min1 > 1) {
       
@@ -704,8 +776,8 @@ object Imgseq2Video extends SimpleSwingApplication {
         val name = f.getName
         val dPath = f.getParent
         val l = name.length
-        val idx = name.substring(l-8,l-4).toInt
-        val name2 = refactorString(name,min1-1,4)
+        val idx = name.substring(l-4-pfixLength,l-pfixLength).toInt
+        val name2 = refactorString(name,min1-1,pfixLength)
         copyImage(dPath+"/"+name,saveDirectory+preFix+name2)
       }
       /*
@@ -715,7 +787,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
       */
       normalized = true
-      
+      prefixInUse = preFix
     }
     
   }
@@ -726,8 +798,8 @@ object Imgseq2Video extends SimpleSwingApplication {
         val name = f.getName
         val dPath = f.getParent
         val l = name.length
-        val idx = name.substring(l-8,l-4).toInt
-        val name2 = refactorString(name,min0-1,4)
+        val idx = name.substring(l-4-pfixLength,l-pfixLength).toInt
+        val name2 = refactorString(name,min0-1,pfixLength)
         copyImage(dPath+"/"+name,saveDirectory+preFix+name2)
       }
       /*
@@ -738,7 +810,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       */
       
       normalized = true
-      
+      prefixInUse = preFix
     }
     
   }
@@ -752,7 +824,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       frameRate = (config \\ "FrameRate").text.toInt
     }
     else {
-      infoArea.append("Could not read a config file...\n")
+      infoArea.append("Could not read a config file...\n"+"You can save your configuration after setting the directories. \n")
       //println(configFile.getPath)
     }
   }
@@ -775,26 +847,26 @@ object Imgseq2Video extends SimpleSwingApplication {
       val dPath = f.getParent
       val l = name.length
       val idx = name.substring(l-8,l-4).toInt
-      val name2 = prefix+renamedFile(name.substring(0,l-8),-idx,max1+1)
+      val name2 = prefix+renamedFile(name.substring(0,l-4-pfixLength),-idx,max1+1)
       copyImage(dPath+"/"+name,tmpDirectory+name2)
     }
-    
+    prefixInUse = prefix
     reversed = true
   }
   def renamedFile(n:String,add:Int,idx:Int) : String = {
     val nidx = idx+add
     
     if (nidx > 999) {
-      n+nidx+".jpg"
+      n+nidx+determinedEnding//".jpg"
     }
     else if (nidx > 99) {
-      n+"0"+nidx+".jpg"
+      n+"0"+nidx+determinedEnding//".jpg"
     }
     else if (nidx > 9) {
-      n+"00"+nidx+".jpg"
+      n+"00"+nidx+determinedEnding//".jpg"
     }
     else {
-      n+"000"+nidx+".jpg"
+      n+"000"+nidx+determinedEnding//".jpg"
     }
   }
   def refactorString(s:String,reduction:Int,endlength:Int) : String = {
@@ -831,7 +903,7 @@ object Imgseq2Video extends SimpleSwingApplication {
       }
     }
     else {
-      infoArea.append("An error occurred while refactoring a filename: "+s)
+      infoArea.append("An error occurred while refactoring a filename: "+s+"\n")
       "fail"
     }
     
@@ -845,21 +917,22 @@ object Imgseq2Video extends SimpleSwingApplication {
   }
   def createMovie(dNam:String,imgs:String) : Unit = {
     if (loopDone || normalized || reversed) {
-      val cmd = "ffmpeg -f image2 -i "+tmpDirectory+imgs.substring(0,imgs.length-8)+"%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+imgs.substring(0,imgs.length-9)+".avi"
-      infoArea.append("Created a movie with the command: "+cmd+"\n")
+      val cmd = "ffmpeg -f image2 -i "+tmpDirectory+prefixInUse+imgs.substring(0,imgs.length-4-pfixLength)+"%04d"+determinedEnding+" -r "+frameRate+" -sameq "+movieDirectory+imgs.substring(0,imgs.length-5-pfixLength)+".avi"
+      //val cmd = "ffmpeg -f image2 -i "+tmpDirectory+imgs.substring(0,imgs.length-8)+"%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+imgs.substring(0,imgs.length-9)+".avi"
+      infoArea.append("Creating a movie with the command: "+cmd+". This may take some time.\n")
       val runt = Runtime.getRuntime
       runt.exec(cmd)
       
     }
     else if (!properlyIndexedSequences) {
-      val cmd = "ffmpeg -f image2 -i "+tmpDirectory+"notproper_%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+"notproper.avi"
-      infoArea.append("Created a movie with the command: "+cmd+"\n")
+      val cmd = "ffmpeg -f image2 -i "+tmpDirectory+"notproper_%04d"+determinedEnding+" -r "+frameRate+" -sameq "+movieDirectory+"notproper.avi"
+      infoArea.append("Creating a movie with the command: "+cmd+". This may take some time.\n")
       val runt = Runtime.getRuntime
       runt.exec(cmd)
     }
     else {
-      val cmd = "ffmpeg -f image2 -i "+dNam+"/"+imgs.substring(0,imgs.length-8)+"%04d.jpg -r "+frameRate+" -sameq "+movieDirectory+imgs.substring(0,imgs.length-9)+".avi"
-      infoArea.append("Created a movie with the command: "+cmd+"\n")
+      val cmd = "ffmpeg -f image2 -i "+dNam+"/"+imgs.substring(0,imgs.length-4-pfixLength)+"%04d"+determinedEnding+" -r "+frameRate+" -sameq "+movieDirectory+imgs.substring(0,imgs.length-5-pfixLength)+".avi"
+      infoArea.append("Creating a movie with the command: "+cmd+". This may take some time.\n")
       val runt = Runtime.getRuntime
       runt.exec(cmd)
     }
