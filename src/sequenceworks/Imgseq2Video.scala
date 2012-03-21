@@ -24,9 +24,9 @@ import scala.swing.FileChooser.SelectionMode
 import scala.xml._
 
 object Imgseq2Video extends SimpleSwingApplication {
-  var saveDirectory = "/home/"
-  var movieDirectory = "/home/"
-  var tmpDirectory = "/home/"
+  var saveDirectory = "./save/"
+  var movieDirectory = "./movie/"
+  var tmpDirectory = "./tmp/"
   var singleMovieName = "newmovie"
   val textArea = new TextArea("No files selected yet...\n")
   textArea.border_=(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(155,155,155)),"Images:"))
@@ -52,6 +52,21 @@ object Imgseq2Video extends SimpleSwingApplication {
   var frameRate = 25
   var givenName = "imageseries"
   readConfig("videoBuilderConfig.xml")
+  checkDirectories
+  def checkDirectories : Unit = {
+    val f1 = new File(saveDirectory)
+    if (!f1.exists()) {
+      f1.mkdir
+    }
+    val f2 = new File(movieDirectory)
+    if (!f2.exists) {
+      f2.mkdir
+    }
+    val f3 = new File(tmpDirectory)
+    if (!f3.exists) {
+      f3.mkdir
+    }
+  }
   def copyImage(src:String,tgt:String) : Boolean = {
     val f = new File(tgt)
     if (f.exists) {
@@ -338,6 +353,7 @@ object Imgseq2Video extends SimpleSwingApplication {
         pfixLength = 4
         properlyIndexedSequences = false
         loopDone = false
+        manyFiles = false
         normalizeSeq.enabled_=(false)
         loopNow.enabled_=(false)
         makeMovie.enabled_=(false)
@@ -521,40 +537,43 @@ object Imgseq2Video extends SimpleSwingApplication {
     }
     else {
       val names = countSeparate(fs)
-    //val minMax = new Array[(Int,Int)](names.length)
-    //val idxs = new Array[LinkedList[Int]](names.length)
-      val nameSeqs = new Array[LinkedList[File]](names.length)
-      for (i <- 0 until names.length) {
-        nameSeqs(i) = new LinkedList[File]()
-      }
-      for (f <- fs) {
-        val name = f.getName
-        val l = name.length
-        var found = false
-        var idx = 0
-        while (!found) {
-          if (names(idx).equals(name.substring(0,l-4-pfixLength))) {
-            found = true
+      if (names.length > 1) {
+        val nameSeqs = new Array[LinkedList[File]](names.length)
+        for (i <- 0 until names.length) {
+          nameSeqs(i) = new LinkedList[File]()
+        }
+        for (f <- fs) {
+          val name = f.getName
+          val l = name.length
+          var found = false
+          var idx = 0
+          while (!found) {
+            if (names(idx).equals(name.substring(0,l-4-pfixLength))) {
+              found = true
+            }
+            else {
+              idx += 1
+            }
+          }
+          nameSeqs(idx) = nameSeqs(idx) :+ f
+        }
+        for (i <- 0 until names.length) {
+          val (a,b) = processFiles(nameSeqs(i))
+          //minMax(i) = a
+          //idxs(i) = b
+          if (a._1 == 1) {
+            normalized = false
+            val file = nameSeqs(i).head
+            createMovie(file.getParent,file.getName)
           }
           else {
-            idx += 1
+            normalizeSequence2(nameSeqs(i),"normalized",a._1)
+            createMovie(movieDirectory,nameSeqs(i).head.getName)
           }
         }
-        nameSeqs(idx) = nameSeqs(idx) :+ f
       }
-      for (i <- 0 until names.length) {
-        val (a,b) = processFiles(nameSeqs(i))
-        //minMax(i) = a
-        //idxs(i) = b
-        if (a._1 == 1) {
-          normalized = false
-          val file = nameSeqs(i).head
-          createMovie(file.getParent,file.getName)
-        }
-        else {
-          normalizeSequence2(nameSeqs(i),"normalized",a._1)
-          createMovie(movieDirectory,nameSeqs(i).head.getName)
-        }
+      else {
+        infoArea.append("Trouble: OpenManySequences clicked but only one sequence detected.")
       }
     }
 
