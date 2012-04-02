@@ -46,7 +46,7 @@ object Imgseq2Video extends SimpleSwingApplication {
   val infoArea = new TextArea("Load a sequence of image files to get started\n")
   infoArea.border_=(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(155,155,155)),"Program messages:"))
   val regexpr = new Regex("\\w+\\_\\d{4}\\.\\w+")
-  var properlyIndexedSequences = false
+  var properlyIndexedSequences = true //default, but will be verified when files are loaded
   var pfixLength = 3
   var determinedEnding = ".jpg"
   var frameRate = 25
@@ -191,12 +191,15 @@ object Imgseq2Video extends SimpleSwingApplication {
         chooser.fileFilter_=(filter)
         chooser.showOpenDialog(contents.first)
         selFiles = chooser.selectedFiles
-        var ((min,max),l) = processFiles(selFiles)
-        min1 = min
-        max1 = max
-        bPoints = l
+        
+
+        
         if (selFiles.length > 1) {
           properlyIndexedSequences = fileNameChecker(selFiles,true)
+          val ((min,max),l) = processFiles(selFiles)
+          min1 = min
+          max1 = max
+          bPoints = l
           imagesLoaded = true
           if (!properlyIndexedSequences) {
             infoArea.append("The files don't appear to be properly indexed (like image_0001.jpg to image_0100.jpg)\n")
@@ -362,6 +365,7 @@ object Imgseq2Video extends SimpleSwingApplication {
         normalizeNow.enabled_=(false)
         concatenateMovies.enabled_=(false)
         imagesLoaded = false
+        reverseSequence.enabled_=(false)
         infoArea.text_=("Cleared everything..\n please load new files\n")
         textArea.text_=("No files loaded\n")
       }
@@ -797,7 +801,7 @@ object Imgseq2Video extends SimpleSwingApplication {
         val l = name.length
         val idx = name.substring(l-4-pfixLength,l-pfixLength).toInt
         val name2 = refactorString(name,min1-1,pfixLength)
-        copyImage(dPath+"/"+name,saveDirectory+preFix+name2)
+        copyImage(dPath+"/"+name,tmpDirectory+preFix+name2)
       }
       /*
       val runTime = Runtime.getRuntime
